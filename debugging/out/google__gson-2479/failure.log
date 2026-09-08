@@ -1,0 +1,137 @@
+INSTANCE: google__gson-2479
+COMMAND: mvn test -B -pl gson -Dtest=com.google.gson.GsonBuilderTest#testRegisterTypeAdapterForObjectAndJsonElements
+
+[INFO] Scanning for projects...
+[INFO] 
+[INFO] ---------------------< com.google.code.gson:gson >----------------------
+[INFO] Building Gson 2.10.2-SNAPSHOT
+[INFO]   from pom.xml
+[INFO] --------------------------------[ jar ]---------------------------------
+[INFO] 
+[INFO] --- enforcer:3.4.1:enforce (enforce-versions) @ gson ---
+[INFO] Rule 0: org.apache.maven.enforcer.rules.version.RequireMavenVersion passed
+[INFO] Rule 1: org.apache.maven.enforcer.rules.version.RequireJavaVersion passed
+[INFO] 
+[INFO] --- templating:1.0.0:filter-sources (filtering-java-templates) @ gson ---
+[INFO] Coping files with filtering to temporary directory.
+[INFO] Using 'UTF-8' encoding to copy filtered resources.
+[INFO] Copying 1 resource
+[INFO] Copied 1 files to output directory: /testbed/gson/target/generated-sources/java-templates
+[INFO] Source directory: /testbed/gson/target/generated-sources/java-templates added.
+[INFO] 
+[INFO] --- resources:3.3.1:resources (default-resources) @ gson ---
+[INFO] Copying 1 resource from src/main/resources to target/classes
+[INFO] 
+[INFO] --- compiler:3.11.0:compile (default-compile) @ gson ---
+[INFO] Changes detected - recompiling the module! :source
+[INFO] Compiling 83 source files with javac [debug deprecation release 7] to target/classes
+[INFO] 
+[INFO] --- bnd:6.4.0:bnd-process (default) @ gson ---
+[WARNING] /testbed/gson/bnd.bnd [0:0]: Export com.google.gson,  has 1,  private references [com.google.gson.internal]
+[INFO] 
+[INFO] --- resources:3.3.1:testResources (default-testResources) @ gson ---
+[INFO] Copying 1 resource from src/test/resources to target/test-classes
+[INFO] 
+[INFO] --- compiler:3.11.0:testCompile (default-testCompile) @ gson ---
+[INFO] Changes detected - recompiling the module! :dependency
+[INFO] Compiling 116 source files with javac [debug deprecation release 11] to target/test-classes
+[INFO] 
+[INFO] --- copy-rename:1.0.1:rename (pre-obfuscate-class) @ gson ---
+[INFO] Renamed /testbed/gson/target/test-classes/com/google/gson/functional/EnumWithObfuscatedTest.class to /testbed/gson/target/test-classes-obfuscated-injar/com/google/gson/functional/EnumWithObfuscatedTest.class
+[INFO] Renamed /testbed/gson/target/test-classes/com/google/gson/functional/EnumWithObfuscatedTest$Gender.class to /testbed/gson/target/test-classes-obfuscated-injar/com/google/gson/functional/EnumWithObfuscatedTest$Gender.class
+[INFO] 
+[INFO] --- proguard:2.6.0:proguard (obfuscate-test-class) @ gson ---
+[INFO] execute ProGuard [-injars, '/testbed/gson/target/test-classes-obfuscated-injar'(!META-INF/maven/**,**/*.class), -libraryjars, '/root/.m2/repository/com/google/errorprone/error_prone_annotations/2.22.0/error_prone_annotations-2.22.0.jar', -outjars, '/testbed/gson/target/test-classes-obfuscated-outjar', -include, '/testbed/gson/src/test/resources/testcases-proguard.conf', -libraryjars, '/testbed/gson/target/classes', -libraryjars, '/opt/java/openjdk/jmods/java.base.jmod', -printmapping, '/testbed/gson/target/proguard_map.txt', -printseeds, '/testbed/gson/target/proguard_seed.txt']
+[INFO] proguard jar: [/root/.m2/repository/com/guardsquare/proguard-base/7.2.2/proguard-base-7.2.2.jar, /root/.m2/repository/com/guardsquare/proguard-core/9.0.1/proguard-core-9.0.1.jar]
+ [proguard] ProGuard, version 7.2.2
+[INFO] 
+[INFO] --- resources:3.3.1:copy-resources (post-obfuscate-class) @ gson ---
+[INFO] Copying 2 resources from target/test-classes-obfuscated-outjar/com/google/gson/functional to target/test-classes/com/google/gson/functional
+[INFO] 
+[INFO] --- surefire:3.1.2:test (default-test) @ gson ---
+[INFO] Using auto detected provider org.apache.maven.surefire.junit4.JUnit4Provider
+[INFO] Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/surefire-junit4/3.1.2/surefire-junit4-3.1.2.pom
+[INFO] Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/surefire-junit4/3.1.2/surefire-junit4-3.1.2.pom (3.0 kB at 7.3 kB/s)
+[INFO] Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/surefire-providers/3.1.2/surefire-providers-3.1.2.pom
+[INFO] Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/surefire-providers/3.1.2/surefire-providers-3.1.2.pom (2.6 kB at 54 kB/s)
+[INFO] Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/common-junit4/3.1.2/common-junit4-3.1.2.pom
+[INFO] Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/common-junit4/3.1.2/common-junit4-3.1.2.pom (3.1 kB at 63 kB/s)
+[INFO] Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/common-junit3/3.1.2/common-junit3-3.1.2.pom
+[INFO] Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/common-junit3/3.1.2/common-junit3-3.1.2.pom (2.8 kB at 49 kB/s)
+[INFO] Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/common-java5/3.1.2/common-java5-3.1.2.pom
+[INFO] Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/common-java5/3.1.2/common-java5-3.1.2.pom (2.8 kB at 55 kB/s)
+[INFO] Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/surefire-junit4/3.1.2/surefire-junit4-3.1.2.jar
+[INFO] Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/common-junit4/3.1.2/common-junit4-3.1.2.jar
+[INFO] Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/common-junit3/3.1.2/common-junit3-3.1.2.jar
+[INFO] Downloading from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/common-java5/3.1.2/common-java5-3.1.2.jar
+[INFO] Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/common-junit4/3.1.2/common-junit4-3.1.2.jar (26 kB at 431 kB/s)
+[INFO] Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/common-java5/3.1.2/common-java5-3.1.2.jar (18 kB at 116 kB/s)
+[INFO] Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/common-junit3/3.1.2/common-junit3-3.1.2.jar (12 kB at 68 kB/s)
+[INFO] Downloaded from central: https://repo.maven.apache.org/maven2/org/apache/maven/surefire/surefire-junit4/3.1.2/surefire-junit4-3.1.2.jar (18 kB at 98 kB/s)
+[INFO] 
+[INFO] -------------------------------------------------------
+[INFO]  T E S T S
+[INFO] -------------------------------------------------------
+[INFO] Running com.google.gson.GsonBuilderTest
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0, Time elapsed: 0.129 s <<< FAILURE! -- in com.google.gson.GsonBuilderTest
+[ERROR] com.google.gson.GsonBuilderTest.testRegisterTypeAdapterForObjectAndJsonElements -- Time elapsed: 0.048 s <<< FAILURE!
+java.lang.AssertionError: expected java.lang.IllegalArgumentException to be thrown, but nothing was thrown
+	at org.junit.Assert.assertThrows(Assert.java:1028)
+	at org.junit.Assert.assertThrows(Assert.java:981)
+	at com.google.gson.GsonBuilderTest.testRegisterTypeAdapterForObjectAndJsonElements(GsonBuilderTest.java:269)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:62)
+	at java.base/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:566)
+	at org.junit.runners.model.FrameworkMethod$1.runReflectiveCall(FrameworkMethod.java:59)
+	at org.junit.internal.runners.model.ReflectiveCallable.run(ReflectiveCallable.java:12)
+	at org.junit.runners.model.FrameworkMethod.invokeExplosively(FrameworkMethod.java:56)
+	at org.junit.internal.runners.statements.InvokeMethod.evaluate(InvokeMethod.java:17)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.BlockJUnit4ClassRunner$1.evaluate(BlockJUnit4ClassRunner.java:100)
+	at org.junit.runners.ParentRunner.runLeaf(ParentRunner.java:366)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:103)
+	at org.junit.runners.BlockJUnit4ClassRunner.runChild(BlockJUnit4ClassRunner.java:63)
+	at org.junit.runners.ParentRunner$4.run(ParentRunner.java:331)
+	at org.junit.runners.ParentRunner$1.schedule(ParentRunner.java:79)
+	at org.junit.runners.ParentRunner.runChildren(ParentRunner.java:329)
+	at org.junit.runners.ParentRunner.access$100(ParentRunner.java:66)
+	at org.junit.runners.ParentRunner$2.evaluate(ParentRunner.java:293)
+	at org.junit.runners.ParentRunner$3.evaluate(ParentRunner.java:306)
+	at org.junit.runners.ParentRunner.run(ParentRunner.java:413)
+	at org.apache.maven.surefire.junit4.JUnit4Provider.execute(JUnit4Provider.java:316)
+	at org.apache.maven.surefire.junit4.JUnit4Provider.executeWithRerun(JUnit4Provider.java:240)
+	at org.apache.maven.surefire.junit4.JUnit4Provider.executeTestSet(JUnit4Provider.java:214)
+	at org.apache.maven.surefire.junit4.JUnit4Provider.invoke(JUnit4Provider.java:155)
+	at org.apache.maven.surefire.booter.ForkedBooter.runSuitesInProcess(ForkedBooter.java:385)
+	at org.apache.maven.surefire.booter.ForkedBooter.execute(ForkedBooter.java:162)
+	at org.apache.maven.surefire.booter.ForkedBooter.run(ForkedBooter.java:507)
+	at org.apache.maven.surefire.booter.ForkedBooter.main(ForkedBooter.java:495)
+
+[INFO] 
+[INFO] Results:
+[INFO] 
+[ERROR] Failures: 
+[ERROR]   GsonBuilderTest.testRegisterTypeAdapterForObjectAndJsonElements:269 expected java.lang.IllegalArgumentException to be thrown, but nothing was thrown
+[INFO] 
+[ERROR] Tests run: 1, Failures: 1, Errors: 0, Skipped: 0
+[INFO] 
+[INFO] ------------------------------------------------------------------------
+[INFO] BUILD FAILURE
+[INFO] ------------------------------------------------------------------------
+[INFO] Total time:  30.527 s
+[INFO] Finished at: 2026-09-08T04:54:37Z
+[INFO] ------------------------------------------------------------------------
+[ERROR] Failed to execute goal org.apache.maven.plugins:maven-surefire-plugin:3.1.2:test (default-test) on project gson: There are test failures.
+[ERROR] 
+[ERROR] Please refer to /testbed/gson/target/surefire-reports for the individual test results.
+[ERROR] Please refer to dump files (if any exist) [date].dump, [date]-jvmRun[N].dump and [date].dumpstream.
+[ERROR] -> [Help 1]
+[ERROR] 
+[ERROR] To see the full stack trace of the errors, re-run Maven with the -e switch.
+[ERROR] Re-run Maven using the -X switch to enable full debug logging.
+[ERROR] 
+[ERROR] For more information about the errors and possible solutions, please read the following articles:
+[ERROR] [Help 1] http://cwiki.apache.org/confluence/display/MAVEN/MojoFailureException
+
+EXIT_CODE: 1
