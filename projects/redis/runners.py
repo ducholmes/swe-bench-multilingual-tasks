@@ -28,5 +28,9 @@ class RedisRunner:
     def build_command(self) -> list[str]:
         return ["bash", "-lc", "make -j$(nproc)"]
 
-    def regression_command(self) -> list[str]:
-        return ["bash", "-lc", "TERM=dumb ./runtest --durable"]
+    def regression_command(self, skipped_tests: list[str] | None = None) -> list[str]:
+        """Run Redis' full harness, optionally skipping known-bad baselines."""
+        command = "TERM=dumb ./runtest --durable"
+        for test_name in skipped_tests or []:
+            command += " --skiptest " + shlex.quote(test_name)
+        return ["bash", "-lc", command]
