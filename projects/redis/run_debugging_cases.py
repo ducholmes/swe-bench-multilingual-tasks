@@ -109,14 +109,11 @@ def test_failure_details(result: subprocess.CompletedProcess[str]) -> str:
     return "\n".join(excerpt).strip() or "no diagnostic output captured"
 
 
-def failed_redis_tests(result: subprocess.CompletedProcess[str]) -> list[str]:
-    """Return the exact Tcl test names emitted by Redis' failure summary."""
-    names = re.findall(
-        r"^\*{3}\s+\[err\]:\s+(.*?)\s+in\s+tests/",
-        result.stdout or "",
-        re.MULTILINE,
-    )
-    return list(dict.fromkeys(name.strip() for name in names if name.strip()))
+def oracle_failed_tests(result: subprocess.CompletedProcess[str]) -> list[str]:
+    """Return normalized IDs emitted by the exact per-test oracle command."""
+    return list(dict.fromkeys(re.findall(
+        r"^ORACLE_FAILED\s+(\S+)$", result.stdout or "", re.MULTILINE
+    )))
 
 
 class FixedTargetFailure(RuntimeError):
@@ -125,13 +122,35 @@ class FixedTargetFailure(RuntimeError):
 
 def verify_oracle(
     *, task: Path, project: Path, image: str, runner: RedisRunner,
-    failing_tests: list[str],
+    failing_tests: list[str], passing_tests: list[str],
 ) -> list[str]:
-    """Check the task-supplied Redis test scope on buggy and fixed states."""
-    # Preserve eval.sh's test command verbatim, including its task-specific
-    # --single/--only scope.  Do not manufacture one selector per test ID.
-    if run_in_image(project, image, runner.target_command("oracle")).returncode == 0:
-        raise RuntimeError("buggy state unexpectedly passes the task test scope")
+    """Validate declared tests exactly and find fixed-state regressions."""
+    failing_ids = [normalize_test_id(test) for test in failing_tests]
+    passing_ids = [normalize_test_id(test) for test in passing_tests]
+
+    # A single broad eval.sh command only proves that some test failed.  Run
+    # every FAIL_TO_PASS ID with an exact --only selector instead.
+    buggy_result = run_in_image(
+        project, image, runner.oracle_command(failing_ids)
+    )
+    buggy_failed = set(oracle_failed_tests(buggy_result))
+    buggy_passed = [
+        test for test, test_id in zip(failing_tests, failing_ids)
+        if test_id not in buggy_failed
+    ]
+    if buggy_passed:
+        raise RuntimeError(
+            "buggy state unexpectedly passes FAIL_TO_PASS test(s): "
+            + ", ".join(buggy_passed)
+        )
+    if buggy_result.returncode and len(buggy_failed) != len(failing_ids):
+        missing = [test for test_id, test in zip(failing_ids, failing_tests) if test_id not in buggy_failed]
+        raise RuntimeError(
+            "buggy exact oracle did not produce a result for test(s): "
+            + ", ".join(missing) + "\n" + test_failure_details(buggy_result)
+        )
+    if not buggy_failed:
+        raise RuntimeError("buggy state unexpectedly passes all FAIL_TO_PASS tests")
     clean_project(project, image)
 
     gold_patch = task / "gold.patch"
@@ -155,23 +174,33 @@ def verify_oracle(
         ])
         if applied.returncode:
             raise RuntimeError("could not apply gold.patch source hunks for fixed oracle")
-        fixed_result = run_in_image(fixed_project, image, runner.target_command("oracle"))
-        if fixed_result.returncode:
-            failed_tests = failed_redis_tests(fixed_result)
-            target_failures = [test for test in failing_tests if test in failed_tests]
-            if target_failures:
-                raise FixedTargetFailure(
-                    "fixed state fails FAIL_TO_PASS test(s): "
-                    + ", ".join(target_failures) + "\n"
-                    + test_failure_details(fixed_result)
-                )
-            if not failed_tests:
-                raise RuntimeError(
-                    "fixed state fails the task test scope but Redis did not report "
-                    "individual test names:\n" + test_failure_details(fixed_result)
-                )
-            return failed_tests
-        return []
+        declared_ids = [*failing_ids, *passing_ids]
+        fixed_result = run_in_image(
+            fixed_project, image, runner.oracle_command(declared_ids)
+        )
+        fixed_failed_ids = set(oracle_failed_tests(fixed_result))
+        target_failures = [
+            test for test, test_id in zip(failing_tests, failing_ids)
+            if test_id in fixed_failed_ids
+        ]
+        if target_failures:
+            raise FixedTargetFailure(
+                "fixed state fails FAIL_TO_PASS test(s): "
+                + ", ".join(target_failures) + "\n"
+                + test_failure_details(fixed_result)
+            )
+        if fixed_result.returncode and len(fixed_failed_ids) == 0:
+            raise RuntimeError(
+                "fixed exact oracle failed without per-test markers:\n"
+                + test_failure_details(fixed_result)
+            )
+
+        # PASS_TO_PASS failures on the gold state are excluded from regression.
+        excluded = [
+            test for test, test_id in zip(passing_tests, passing_ids)
+            if test_id in fixed_failed_ids
+        ]
+        return excluded
     finally:
         # Docker's build can create root-owned ignored files; clean from the
         # container before removing the disposable fixed checkout on the host.
@@ -233,7 +262,18 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
         run(["git", "-C", str(project), "config", "user.name", "Debugging Framework"])
         run(["git", "-C", str(project), "add", "-A"])
         run(["git", "-C", str(project), "commit", "-m", "SWE-bench test baseline"])
-    runner = RedisRunner(redis_test_command(task))
+    target_names: dict[str, str] = {}
+    for original in [*original_failing, *original_passing]:
+        normalized = normalize_test_id(original)
+        previous = target_names.setdefault(normalized, original)
+        if previous != original:
+            raise ValueError(
+                f"{task_id} has ambiguous normalized target ID {normalized!r}: "
+                f"{previous!r} and {original!r}"
+            )
+    runner = RedisRunner(
+        redis_test_command(task), tuple(target_names.items())
+    )
     try:
         excluded_regressions = verify_oracle(
             task=task,
@@ -241,24 +281,25 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
             image=image,
             runner=runner,
             failing_tests=original_failing,
+            passing_tests=original_passing,
         )
     except FixedTargetFailure as exc:
         # This instance cannot be evaluated: its gold state does not satisfy
         # a required target outcome.  Do not leave a stale input behind.
         shutil.rmtree(target, ignore_errors=True)
         raise RuntimeError(f"{exc}\nRejected instance and removed {target}") from exc
+    if excluded_regressions:
+        print(
+            f"[filter] {task_id}: skip PASS_TO_PASS test(s) that fail on fixed: "
+            + ", ".join(excluded_regressions),
+            flush=True,
+        )
     command = runner.target_command(failing[0])
     failure = target / "failure.log"
     failure.write_text(f"INSTANCE: {task_id}\nCOMMAND: {shlex.join(command)}\n\n")
     result = run(["docker", "run", "--rm", "-v", f"{project}:/testbed", "-w", "/testbed", image, *command])
     failure.write_text(failure.read_text() + (result.stdout or "") + f"\nEXIT_CODE: {result.returncode}\n")
     clean_project(project, image)
-    if excluded_regressions:
-        print(
-            f"[filter] {task_id}: skip regression test(s) that fail on fixed: "
-            + ", ".join(excluded_regressions),
-            flush=True,
-        )
     config = {
         "schema_version": 6,
         "project_id": task_id,
@@ -272,9 +313,9 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
             "failure_pattern": r"^FAILED\s+\S+",
         }],
         "regression_test": [{
-            "command": runner.regression_command(excluded_regressions),
-            "evidence_pattern": r"\\o/ All tests passed without errors!",
-            "failure_pattern": r"!!! WARNING|FAILED",
+            "command": runner.regression_command(original_passing, excluded_regressions),
+            "evidence_pattern": r"^REGRESSION_PASSED\s+\S+",
+            "failure_pattern": r"^REGRESSION_(?:FAILED|INVALID)\s+\S+",
         }],
         "repair": {"failing_tests": failing},
         "environment": {"mode": "image", "runtime": "docker", "image": image},
@@ -283,6 +324,9 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
             "repo": metadata.get("repo"),
             "test_command": runner.test_command,
             "original_failing_tests": original_failing,
+            "regression_tests": [
+                test for test in original_passing if test not in excluded_regressions
+            ],
             "fixed_failed_regression_tests": excluded_regressions,
         },
     }

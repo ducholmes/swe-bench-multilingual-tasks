@@ -28,6 +28,10 @@ name is also a CMake target name. It then runs the failing test to create
 `failure.log`, cleans generated build files, and writes a schema-version-6
 config.
 
+The generated regression command runs only the task's declared
+`PASS_TO_PASS` IDs (excluding any IDs the gold-state oracle found already
+failing), rather than the full CTest suite.
+
 Run validation for every prepared instance:
 
 ```bash

@@ -130,21 +130,24 @@ exit "$status"'''
         return ["bash", "-lc", self._test_discovery_script(test_ids, oracle_markers=True)]
 
     def build_command(self) -> list[str]:
-        # The regression command runs the complete CTest suite.  Building only
-        # the failing target leaves the other CTest executables absent, which
-        # makes the suite report unrelated "Unable to find executable" errors
-        # and causes valid repairs to be classified as noisefix.
+        # Build all test executables so discovery can find the binaries that
+        # own the task's FAIL_TO_PASS and PASS_TO_PASS GoogleTest IDs.
         return [
             "bash", "-lc",
             "cmake -B build -S . && cmake --build build --parallel $(nproc)",
         ]
 
-    def regression_command(self, skipped_tests: list[str] | None = None) -> list[str]:
-        """Run CTest while excluding fixed-state-invalid GoogleTest IDs."""
-        if not skipped_tests:
-            return ["ctest", "--test-dir", "build", "-V"]
-        test_filter = "-" + ":".join(skipped_tests)
-        return [
-            "bash", "-lc",
-            f"GTEST_FILTER={shlex.quote(test_filter)} ctest --test-dir build -V",
-        ]
+    def regression_command(
+        self,
+        pass_to_pass_tests: list[str],
+        skipped_tests: list[str] | None = None,
+    ) -> list[str]:
+        """Run only declared PASS_TO_PASS IDs, omitting IDs invalid on gold."""
+        skipped = set(skipped_tests or [])
+        test_ids = [test_id for test_id in pass_to_pass_tests if test_id not in skipped]
+        if not test_ids:
+            return [
+                "bash", "-lc",
+                "printf '%s\\n' 'No eligible PASS_TO_PASS tests to run'",
+            ]
+        return ["bash", "-lc", self._test_discovery_script(test_ids)]

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shlex
 import shutil
 import subprocess
@@ -320,7 +321,7 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
             "evidence_pattern": r"^(?:PASSED|FAILED)\s+\S+",
             "failure_pattern": r"^FAILED\s+\S+",
         }],
-        "regression_test": [runner.regression_command(excluded_regressions)],
+        "regression_test": [runner.regression_command(passing, excluded_regressions)],
         "repair": {"failing_tests": failing},
         "environment": {"mode": "image", "runtime": "docker", "image": image},
         "metadata": {
