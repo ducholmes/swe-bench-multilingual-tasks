@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import shlex
 import shutil
 import subprocess
@@ -33,14 +34,23 @@ FRAMEWORK = (
 
 def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess[str]:
     print("+", shlex.join(cmd), flush=True)
-    result = subprocess.run(
-        cmd, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **kwargs
+    process = subprocess.Popen(
+        cmd,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=1,
+        **kwargs,
     )
-    if result.stdout:
-        print(result.stdout, end="", flush=True)
-    if result.returncode:
-        print(f"[exit {result.returncode}]", flush=True)
-    return result
+    output = []
+    assert process.stdout is not None
+    for line in process.stdout:
+        output.append(line)
+        print(line, end="", flush=True)
+    returncode = process.wait()
+    if returncode:
+        print(f"[exit {returncode}]", flush=True)
+    return subprocess.CompletedProcess(cmd, returncode, "".join(output))
 
 
 def load(task_id: str) -> tuple[Path, dict, dict]:
@@ -86,19 +96,77 @@ def run_in_image(project: Path, image: str, command: list[str]) -> subprocess.Co
     ])
 
 
+def apply_patch_in_image(
+    project: Path,
+    image: str,
+    patch: Path,
+    *,
+    check: bool = False,
+    excluded_paths: list[str] | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Apply a host patch from inside Docker's view of the bind mount.
+
+    Docker Desktop on macOS can retain the pre-patch file size when a file is
+    rewritten on the host and immediately read through a bind mount.  Applying
+    inside the container keeps its file contents and metadata coherent before
+    the subsequent containerized build.
+    """
+    git_args = ["git", "-c", "safe.directory=/testbed", "apply"]
+    if check:
+        git_args.append("--check")
+    git_args.extend(f"--exclude={path}" for path in (excluded_paths or []))
+    git_args.append("/tmp/debugging-framework-input.patch")
+    return run([
+        "docker", "run", "--rm",
+        "-v", f"{project}:/testbed",
+        "-v", f"{patch.resolve()}:/tmp/debugging-framework-input.patch:ro",
+        "-w", "/testbed", image, *git_args,
+    ])
+
+
 class FixedTargetFailure(RuntimeError):
     """The gold state does not satisfy a declared FAIL_TO_PASS test."""
 
 
-def oracle_failed_tests(result: subprocess.CompletedProcess[str]) -> list[str]:
-    """Read the per-ID markers emitted by CppRunner.target_group_command."""
+def oracle_test_results(
+    result: subprocess.CompletedProcess[str], outcome: str
+) -> list[str]:
+    """Read per-ID markers emitted by CppRunner.target_group_command."""
     return list(dict.fromkeys(re.findall(
-        r"^ORACLE_FAILED\s+(\S+)$", result.stdout or "", re.MULTILINE
+        rf"^ORACLE_{outcome}\s+(\S+)$", result.stdout or "", re.MULTILINE
     )))
 
 
+def complete_oracle_results(
+    result: subprocess.CompletedProcess[str], test_ids: list[str]
+) -> tuple[list[str], list[str]]:
+    """Return passed/failed IDs only when every requested ID was observed."""
+    passed_tests = oracle_test_results(result, "PASSED")
+    failed_tests = oracle_test_results(result, "FAILED")
+    observed_tests = set(passed_tests) | set(failed_tests)
+    missing_tests = [test for test in test_ids if test not in observed_tests]
+    unexpected_tests = sorted(observed_tests - set(test_ids))
+    if missing_tests or unexpected_tests:
+        details = []
+        if missing_tests:
+            details.append("missing: " + ", ".join(missing_tests))
+        if unexpected_tests:
+            details.append("unexpected: " + ", ".join(unexpected_tests))
+        raise RuntimeError(
+            "fixed state produced an incomplete test oracle ("
+            + "; ".join(details) + ")"
+        )
+    return passed_tests, failed_tests
+
+
 def verify_oracle(
-    *, task: Path, project: Path, image: str, failing_tests: list[str], passing_tests: list[str],
+    *,
+    task: Path,
+    project: Path,
+    image: str,
+    runner: CppRunner,
+    failing_tests: list[str],
+    passing_tests: list[str],
 ) -> list[str]:
     """Prove that the task's declared test oracle is internally consistent.
 
@@ -110,15 +178,18 @@ def verify_oracle(
     malformed test can make repair evaluation look better than it is.
     """
     def command_for(test_id: str) -> list[str]:
-        return CppRunner().target_command(test_id)
+        return runner.target_command(test_id)
 
     def passing_groups() -> list[tuple[list[str], list[str]]]:
-        """Run all declared IDs after resolving each to its real executable."""
+        """Run all declared IDs through the task's CTest command."""
         ids = [*failing_tests, *passing_tests]
-        return [(ids, CppRunner().target_group_command(ids))]
+        return [(ids, runner.target_group_command(ids))]
 
     # Check each failing ID separately: a non-zero status for a group would
     # not prove that every member of FAIL_TO_PASS actually fails.
+    buggy_build = run_in_image(project, image, runner.build_command())
+    if buggy_build.returncode:
+        raise RuntimeError("could not build buggy state with eval.sh commands")
     buggy_passed = [
         test_id for test_id in failing_tests
         if run_in_image(project, image, command_for(test_id)).returncode == 0
@@ -140,24 +211,36 @@ def verify_oracle(
         # gold.patch includes the same test hunks as test.patch.  They are
         # already present in the prepared baseline; applying just production
         # hunks models the evaluator's fixed source plus its test patch.
-        checked = run([
-            "git", "-C", str(fixed_project), "apply", "--check",
-            "--exclude=test/**", str(gold_patch.resolve()),
-        ])
+        checked = apply_patch_in_image(
+            fixed_project,
+            image,
+            gold_patch,
+            check=True,
+            excluded_paths=["test/**"],
+        )
         if checked.returncode:
             raise RuntimeError("could not apply gold.patch source hunks for fixed oracle")
-        applied = run([
-            "git", "-C", str(fixed_project), "apply", "--exclude=test/**",
-            str(gold_patch.resolve()),
-        ])
+        applied = apply_patch_in_image(
+            fixed_project,
+            image,
+            gold_patch,
+            excluded_paths=["test/**"],
+        )
         if applied.returncode:
             raise RuntimeError("could not apply gold.patch source hunks for fixed oracle")
 
+        fixed_build = run_in_image(fixed_project, image, runner.build_command())
+        if fixed_build.returncode:
+            raise RuntimeError("could not build fixed state with eval.sh commands")
         for test_ids, command in passing_groups():
             fixed_result = run_in_image(fixed_project, image, command)
+            _, failed_tests = complete_oracle_results(fixed_result, test_ids)
             if fixed_result.returncode == 0:
+                if failed_tests:
+                    raise RuntimeError(
+                        "fixed state returned success with failed test markers"
+                    )
                 continue
-            failed_tests = oracle_failed_tests(fixed_result)
             if not failed_tests:
                 raise RuntimeError(
                     "fixed state test command failed without per-test oracle markers"
@@ -216,15 +299,27 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
     if not (project / ".git").exists():
         raise RuntimeError(f"container extraction did not produce a Git checkout: {project}")
 
+    # Docker Desktop copies regular files to macOS as executable.  Ignore
+    # those synthetic mode changes so the local baseline commit contains only
+    # the benchmark's test patch rather than hundreds of 100644 -> 100755
+    # changes.
+    file_mode = run([
+        "git", "-C", str(project), "config", "core.fileMode", "false",
+    ])
+    if file_mode.returncode:
+        raise RuntimeError("could not configure Git file-mode handling")
+
     # The SWE-bench image contains the prebuilt repository.  Remove ignored
     # build outputs before handing it to Debugging-Framework, then apply the
     # test patch exactly as the SWE-bench evaluator does.
     clean_project(project, image)
     test_patch = task / "test.patch"
     if test_patch.is_file():
-        check = run(["git", "-C", str(project), "apply", "--check", str(test_patch.resolve())])
+        check = apply_patch_in_image(
+            project, image, test_patch, check=True
+        )
         if check.returncode == 0:
-            applied = run(["git", "-C", str(project), "apply", str(test_patch.resolve())])
+            applied = apply_patch_in_image(project, image, test_patch)
             if applied.returncode:
                 raise RuntimeError("could not apply test.patch")
             # The framework requires a clean Git checkout.  The SWE-bench
@@ -240,8 +335,10 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
             if committed.returncode:
                 raise RuntimeError("could not commit test.patch baseline")
 
-    # The command dynamically discovers the executable that owns a GoogleTest
-    # ID, so it remains valid when a fmt version combines suites in one binary.
+    # eval.sh is the task's execution contract; tests.json is its scoring
+    # oracle. Use the former for CMake/CTest commands and the latter to limit
+    # the individual GoogleTest IDs that may affect validation.
+    runner = CppRunner.from_eval_script(task / "eval.sh")
     failing = [str(value).strip() for value in tests.get("FAIL_TO_PASS", [])]
     if not failing:
         raise ValueError(f"{task_id} has no FAIL_TO_PASS tests")
@@ -262,6 +359,7 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
             task=task,
             project=project,
             image=image,
+            runner=runner,
             failing_tests=failing,
             passing_tests=passing,
         )
@@ -276,7 +374,7 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
             + ", ".join(excluded_regressions),
             flush=True,
         )
-    runner = CppRunner()
+    declared_tests = [*failing, *passing]
     # Keep a concrete command for producing the caller-supplied failure log,
     # and a placeholder command for the framework.  The latter is expanded
     # once per repair.failing_tests entry during target validation.
@@ -287,6 +385,9 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
         "INSTANCE: " + task_id + "\nCOMMAND: " + shlex.join(command) + "\n\n"
     )
     # Execute inside the prepared image; the output is the caller-supplied baseline.
+    baseline_build = run_in_image(project, image, runner.build_command())
+    if baseline_build.returncode:
+        raise RuntimeError("could not build baseline with eval.sh commands")
     result = run(
         [
             "docker",
@@ -303,7 +404,7 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
     with failure.open("a") as fh:
         fh.write(result.stdout or "")
         fh.write(f"\nEXIT_CODE: {result.returncode}\n")
-    # Running the baseline test recreates ignored Maven/Cargo build outputs.
+    # Running the baseline test recreates ignored CMake build outputs.
     # Remove them after capturing the log, otherwise doctor quite correctly
     # rejects the checkout as unsafe for in-place recovery.
     clean_project(project, image)
@@ -320,13 +421,19 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
             "evidence_pattern": r"^(?:PASSED|FAILED)\s+\S+",
             "failure_pattern": r"^FAILED\s+\S+",
         }],
-        "regression_test": [runner.regression_command(excluded_regressions)],
+        "regression_test": [{
+            "command": runner.regression_command(
+                declared_tests, excluded_regressions
+            ),
+            "evidence_pattern": r"^(?:PASSED|FAILED)\s+\S+",
+            "failure_pattern": r"^FAILED\s+\S+",
+        }],
         "repair": {"failing_tests": failing},
         "environment": {"mode": "image", "runtime": "docker", "image": image},
         "metadata": {
             "base_commit": metadata.get("base_commit"),
             "repo": metadata.get("repo"),
-            "test_target": "auto-discovered",
+            "eval_test_command": list(runner.test_command),
             "fixed_failed_regression_tests": excluded_regressions,
         },
     }

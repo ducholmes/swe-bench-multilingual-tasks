@@ -22,11 +22,18 @@ The script reads each task's image, base commit, `test.patch`, and
 the oracle: every `FAIL_TO_PASS` test must fail on the buggy checkout, then
 the source hunks of `gold.patch` are applied to a disposable copy (the test
 hunks are already supplied by `test.patch`) and all declared tests must pass.
-It builds the CMake project and discovers the GoogleTest executable that owns
-each declared ID via `--gtest_list_tests`; this avoids assuming that a suite
-name is also a CMake target name. It then runs the failing test to create
-`failure.log`, cleans generated build files, and writes a schema-version-6
-config.
+The CMake build and CTest commands come from that task's `eval.sh`. Each CTest
+run is restricted with `GTEST_FILTER` to one ID from `tests.json`, so tests
+outside the declared oracle cannot affect repair validation. Each selected test
+has a 30-second timeout and one retry, and command output is streamed while
+prepare runs. The script then runs the failing test to create `failure.log`,
+cleans generated build files, and writes a schema-version-6 config whose
+regression command runs exactly the declared `FAIL_TO_PASS` and `PASS_TO_PASS`
+IDs, excluding any fixed-state-invalid regression IDs found by the oracle
+check. On macOS, patches are applied from
+inside the task container so Docker Desktop cannot build against a stale
+pre-patch file size; synthetic executable-bit changes from `docker cp` are
+also ignored.
 
 Run validation for every prepared instance:
 

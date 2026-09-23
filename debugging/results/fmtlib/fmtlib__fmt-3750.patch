@@ -1,0 +1,71 @@
+diff --git a/include/fmt/format.h b/include/fmt/format.h
+index 79bf52569f38177105279fd15d44746dcdc57737..0b31a204726ef42b90b7cc906661bd791f18299b 100644
+--- a/include/fmt/format.h
++++ b/include/fmt/format.h
+@@ -2113,23 +2113,57 @@ template <typename Char> class digit_grouping {
+   }
+ };
+ 
+-// Writes a decimal integer with digit grouping.
++FMT_CONSTEXPR inline void prefix_append(unsigned& prefix, unsigned value);
++
++// Writes an integer with digit grouping.
+ template <typename OutputIt, typename UInt, typename Char>
+ auto write_int(OutputIt out, UInt value, unsigned prefix,
+                const format_specs<Char>& specs,
+                const digit_grouping<Char>& grouping) -> OutputIt {
+   static_assert(std::is_same<uint64_or_128_t<UInt>, UInt>::value, "");
+-  int num_digits = count_digits(value);
+-  char digits[40];
+-  format_decimal(digits, value, num_digits);
+-  unsigned size = to_unsigned((prefix != 0 ? 1 : 0) + num_digits +
++  int num_digits = 0;
++  char digits[128];
++  switch (specs.type) {
++  case presentation_type::none:
++  case presentation_type::dec:
++    num_digits = count_digits(value);
++    format_decimal(digits, value, num_digits);
++    break;
++  case presentation_type::hex_lower:
++  case presentation_type::hex_upper: {
++    bool upper = specs.type == presentation_type::hex_upper;
++    if (specs.alt)
++      prefix_append(prefix, unsigned(upper ? 'X' : 'x') << 8 | '0');
++    num_digits = count_digits<4>(value);
++    format_uint<4>(digits, value, num_digits, upper);
++    break;
++  }
++  case presentation_type::bin_lower:
++  case presentation_type::bin_upper:
++    if (specs.alt) {
++      bool upper = specs.type == presentation_type::bin_upper;
++      prefix_append(prefix, unsigned(upper ? 'B' : 'b') << 8 | '0');
++    }
++    num_digits = count_digits<1>(value);
++    format_uint<1>(digits, value, num_digits);
++    break;
++  case presentation_type::oct:
++    num_digits = count_digits<3>(value);
++    if (specs.alt && specs.precision <= num_digits && value != 0)
++      prefix_append(prefix, '0');
++    format_uint<3>(digits, value, num_digits);
++    break;
++  case presentation_type::chr:
++    return write_char(out, static_cast<Char>(value), specs);
++  default:
++    throw_format_error("invalid format specifier");
++  }
++  unsigned size = to_unsigned((prefix >> 24) + num_digits +
+                               grouping.count_separators(num_digits));
+   return write_padded<align::right>(
+       out, specs, size, size, [&](reserve_iterator<OutputIt> it) {
+-        if (prefix != 0) {
+-          char sign = static_cast<char>(prefix);
+-          *it++ = static_cast<Char>(sign);
+-        }
++        for (unsigned p = prefix & 0xffffff; p != 0; p >>= 8)
++          *it++ = static_cast<Char>(p & 0xff);
+         return grouping.apply(it, string_view(digits, to_unsigned(num_digits)));
+       });
+ }

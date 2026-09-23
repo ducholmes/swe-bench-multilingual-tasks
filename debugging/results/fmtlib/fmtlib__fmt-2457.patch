@@ -1,0 +1,65 @@
+diff --git a/include/fmt/ranges.h b/include/fmt/ranges.h
+index a35c0664e74af161d93e541a4170b7f05dfa8c6f..c3c6b371392b607bb97a06f28b2b8697871fd241 100644
+--- a/include/fmt/ranges.h
++++ b/include/fmt/ranges.h
+@@ -627,9 +627,11 @@ using tuple_arg_join = tuple_join_view<Char, T...>;
+ 
+ template <typename Char, typename... T>
+ struct formatter<tuple_join_view<Char, T...>, Char> {
++  std::tuple<formatter<typename std::decay<T>::type, Char>...> formatters_;
++
+   template <typename ParseContext>
+   FMT_CONSTEXPR auto parse(ParseContext& ctx) -> decltype(ctx.begin()) {
+-    return ctx.begin();
++    return parse(ctx, detail::make_index_sequence<sizeof...(T)>{});
+   }
+ 
+   template <typename FormatContext>
+@@ -639,15 +641,25 @@ struct formatter<tuple_join_view<Char, T...>, Char> {
+   }
+ 
+  private:
++  template <typename ParseContext, size_t... N>
++  FMT_CONSTEXPR auto parse(ParseContext& ctx, detail::index_sequence<N...>)
++      -> decltype(ctx.begin()) {
++    auto result = ctx.begin();
++    using ignore = int[];
++    (void)ignore{0,
++                 (result = std::get<N>(formatters_).parse(ctx), 0)...};
++    return result;
++  }
++
+   template <typename FormatContext, size_t... N>
+   auto format(const tuple_join_view<Char, T...>& value, FormatContext& ctx,
+               detail::index_sequence<N...>) ->
+       typename FormatContext::iterator {
+     using std::get;
+-    return format_args(value, ctx, get<N>(value.tuple)...);
++    return format_args<0>(value, ctx, get<N>(value.tuple)...);
+   }
+ 
+-  template <typename FormatContext>
++  template <size_t N, typename FormatContext>
+   auto format_args(const tuple_join_view<Char, T...>&, FormatContext& ctx) ->
+       typename FormatContext::iterator {
+     // NOTE: for compilers that support C++17, this empty function instantiation
+@@ -655,16 +667,15 @@ struct formatter<tuple_join_view<Char, T...>, Char> {
+     return ctx.out();
+   }
+ 
+-  template <typename FormatContext, typename Arg, typename... Args>
++  template <size_t N, typename FormatContext, typename Arg, typename... Args>
+   auto format_args(const tuple_join_view<Char, T...>& value, FormatContext& ctx,
+                    const Arg& arg, const Args&... args) ->
+       typename FormatContext::iterator {
+-    using base = formatter<typename std::decay<Arg>::type, Char>;
+-    auto out = base().format(arg, ctx);
++    auto out = std::get<N>(formatters_).format(arg, ctx);
+     if (sizeof...(Args) > 0) {
+       out = std::copy(value.sep.begin(), value.sep.end(), out);
+       ctx.advance_to(out);
+-      return format_args(value, ctx, args...);
++      return format_args<N + 1>(value, ctx, args...);
+     }
+     return out;
+   }

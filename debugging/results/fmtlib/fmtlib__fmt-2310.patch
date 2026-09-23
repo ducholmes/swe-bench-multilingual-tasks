@@ -1,0 +1,31 @@
+diff --git a/include/fmt/core.h b/include/fmt/core.h
+index 834b2d57486d38e47a5aaea4151550059a3eeb85..8d53d86acb737a45c498e4bc87a3db998640a1c6 100644
+--- a/include/fmt/core.h
++++ b/include/fmt/core.h
+@@ -1947,7 +1947,7 @@ template <typename Char> class specs_setter {
+   FMT_CONSTEXPR void on_localized() { specs_.localized = true; }
+ 
+   FMT_CONSTEXPR void on_zero() {
+-    specs_.align = align::numeric;
++    if (specs_.align == align::none) specs_.align = align::numeric;
+     specs_.fill[0] = Char('0');
+   }
+ 
+diff --git a/include/fmt/format.h b/include/fmt/format.h
+index 4dc9e0976e9d27d5f61c313de7c3852ceef7187e..6bd017876f6a2783ff79b14e70d419d8fa3758ac 100644
+--- a/include/fmt/format.h
++++ b/include/fmt/format.h
+@@ -1588,8 +1588,12 @@ FMT_CONSTEXPR OutputIt write(OutputIt out, const Char* s,
+ 
+ template <typename Char, typename OutputIt>
+ OutputIt write_nonfinite(OutputIt out, bool isinf,
+-                         const basic_format_specs<Char>& specs,
++                         basic_format_specs<Char> specs,
+                          const float_specs& fspecs) {
++  if (specs.align == align::numeric) {
++    specs.align = align::right;
++  }
++  if (specs.fill[0] == Char('0')) specs.fill[0] = Char(' ');
+   auto str =
+       isinf ? (fspecs.upper ? "INF" : "inf") : (fspecs.upper ? "NAN" : "nan");
+   constexpr size_t str_size = 3;

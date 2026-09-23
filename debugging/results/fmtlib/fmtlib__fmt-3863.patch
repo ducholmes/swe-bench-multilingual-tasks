@@ -1,0 +1,21 @@
+diff --git a/include/fmt/ranges.h b/include/fmt/ranges.h
+index 03eb5184882de2fdd7c2ea6ee842d6af5df57325..33b867b01459dd90f7cc885b91007c00967558cb 100644
+--- a/include/fmt/ranges.h
++++ b/include/fmt/ranges.h
+@@ -417,6 +417,16 @@ struct range_formatter<
+     }
+ 
+     if (it != end && *it != '}') {
++      if (std::is_same<T, Char>::value && (*it == 's' || *it == '?')) {
++        bool debug = *it == '?';
++        if (debug && (it + 1 == end || *(it + 1) != 's'))
++          report_error("invalid format specifier");
++        set_brackets(detail::string_literal<Char, '"'>{},
++                     detail::string_literal<Char, '"'>{});
++        set_separator({});
++        detail::maybe_set_debug_format(underlying_, debug);
++        return it + (debug ? 2 : 1);
++      }
+       if (*it != ':') report_error("invalid format specifier");
+       ++it;
+     } else {

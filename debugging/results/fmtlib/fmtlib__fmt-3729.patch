@@ -1,0 +1,52 @@
+diff --git a/include/fmt/std.h b/include/fmt/std.h
+index 4799df1a317da15b2cbafe0da9957d851b56c709..3c611483d76d23c9f4b500c70c4dad872e35b2e9 100644
+--- a/include/fmt/std.h
++++ b/include/fmt/std.h
+@@ -82,11 +82,16 @@ FMT_BEGIN_NAMESPACE
+ namespace detail {
+ 
+ template <typename Char, typename PathChar> auto get_path_string(
+-  const std::filesystem::path& p, const std::basic_string<PathChar>& native) {
+-  if constexpr (std::is_same_v<Char, char> && std::is_same_v<PathChar, wchar_t>)
++    const std::filesystem::path& p, const std::basic_string<PathChar>& native,
++    bool generic) {
++  if constexpr (std::is_same_v<Char, char> && std::is_same_v<PathChar, wchar_t>) {
++    if (generic)
++      return to_utf8<wchar_t>(p.generic_wstring(),
++                              to_utf8_error_policy::replace);
+     return to_utf8<wchar_t>(native, to_utf8_error_policy::replace);
+-  else
+-    return p.string<Char>();
++  } else {
++    return generic ? p.generic_string<Char>() : p.string<Char>();
++  }
+ }
+ 
+ template <typename Char, typename PathChar>
+@@ -114,6 +119,7 @@ template <typename Char> struct formatter<std::filesystem::path, Char> {
+   format_specs<Char> specs_;
+   detail::arg_ref<Char> width_ref_;
+   bool debug_ = false;
++  bool generic_ = false;
+ 
+  public:
+   FMT_CONSTEXPR void set_debug_format(bool set = true) { debug_ = set; }
+@@ -129,6 +135,9 @@ template <typename Char> struct formatter<std::filesystem::path, Char> {
+     if (it != end && *it == '?') {
+       debug_ = true;
+       ++it;
++    } else if (it != end && (*it == 'n' || *it == 'g')) {
++      generic_ = *it == 'g';
++      ++it;
+     }
+     return it;
+   }
+@@ -139,7 +148,7 @@ template <typename Char> struct formatter<std::filesystem::path, Char> {
+     detail::handle_dynamic_spec<detail::width_checker>(specs.width, width_ref_,
+                                                        ctx);
+     if (!debug_) {
+-      auto s = detail::get_path_string<Char>(p, p.native());
++      auto s = detail::get_path_string<Char>(p, p.native(), generic_);
+       return detail::write(ctx.out(), basic_string_view<Char>(s), specs);
+     }
+     auto quoted = basic_memory_buffer<Char>();

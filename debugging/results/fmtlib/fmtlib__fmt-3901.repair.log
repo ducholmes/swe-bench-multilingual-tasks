@@ -1,0 +1,18 @@
+[baseline] using the caller-supplied failure log and test IDs; the original source is not run
+[attempt 1/2] Codex (gpt-5.6-sol) is inspecting the project and creating a patch
+[map] MapAgent is preparing CodeGraph and exporting its indexed file map (no model)
+[retrieval] gpt-5.6-luna is collecting baseline evidence
+[attempt 1/2] Apply/provision/build/test diff: 1 file(s)
+{
+  "status": "plausible",
+  "output_patch": "/Users/linhnh/Developer/Debugging/swe-bench-multilingual-tasks/debugging/results/fmtlib/fmtlib__fmt-3901.patch",
+  "patch_validation_passed": true,
+  "test_oracle_modified": false,
+  "blocked_patch_paths": [],
+  "workspace_patch_artifact": "attempts/attempt_01/workspace.patch.diff",
+  "repair_paths": [
+    "include/fmt/format.h"
+  ],
+  "error": "",
+  "validation_error": ""
+}

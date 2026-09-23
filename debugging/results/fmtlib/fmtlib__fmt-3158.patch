@@ -1,0 +1,22 @@
+diff --git a/include/fmt/ranges.h b/include/fmt/ranges.h
+index 2105a668822cc08beb04fd3bb3c68e63de951022..2c58a3f15114b22f80adb232dfdf99445c89a845 100644
+--- a/include/fmt/ranges.h
++++ b/include/fmt/ranges.h
+@@ -469,6 +469,8 @@ struct range_formatter<
+     closing_bracket_ = close;
+   }
+ 
++  FMT_CONSTEXPR void set_debug_format() { maybe_set_debug_format(); }
++
+   template <typename ParseContext>
+   FMT_CONSTEXPR auto parse(ParseContext& ctx) -> decltype(ctx.begin()) {
+     auto it = ctx.begin();
+@@ -559,6 +561,8 @@ struct range_default_formatter<
+ 
+   FMT_CONSTEXPR void init(range_format_constant<range_format::sequence>) {}
+ 
++  FMT_CONSTEXPR void set_debug_format() { underlying_.set_debug_format(); }
++
+   template <typename ParseContext>
+   FMT_CONSTEXPR auto parse(ParseContext& ctx) -> decltype(ctx.begin()) {
+     return underlying_.parse(ctx);
