@@ -409,7 +409,6 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
     # rejects the checkout as unsafe for in-place recovery.
     clean_project(project, image)
     config = {
-        "schema_version": 6,
         "project_id": task_id,
         "language": "cpp",
         "setup": [],
@@ -455,11 +454,30 @@ def discover_instances() -> list[str]:
     return instances
 
 
+def framework_agent_options(
+    args: argparse.Namespace, *, include_timeout: bool = False
+) -> tuple[str, ...]:
+    values = [
+        ("--harness", args.harness),
+        ("--retrieval-model", args.retrieval_model),
+        ("--repair-model", args.repair_model),
+    ]
+    if include_timeout:
+        values.append(("--agent-timeout", args.agent_timeout))
+    options: list[str] = []
+    for flag, value in values:
+        if value is not None:
+            options.extend((flag, str(value)))
+    return tuple(options)
+
+
 def run_instance(
     action: str,
     task_id: str,
     image: str | None = None,
     build: bool = False,
+    doctor_options: tuple[str, ...] = (),
+    repair_options: tuple[str, ...] = (),
 ) -> int:
     path = prepare(task_id, image, build)
     if action == "prepare":
@@ -467,7 +485,9 @@ def run_instance(
     framework = str(FRAMEWORK)
     config, failure = path / "config.json", path / "failure.log"
     project = path / task_id
-    doctor = [framework, "doctor", str(project), "--config", str(config)]
+    doctor = [
+        framework, "doctor", str(project), "--config", str(config), *doctor_options
+    ]
     if action in ("doctor", "trial"):
         if run(doctor).returncode:
             return 1
@@ -482,6 +502,7 @@ def run_instance(
                 str(config),
                 "--failure-output",
                 str(failure),
+                *repair_options,
             ]
         ).returncode
     return 0
@@ -497,12 +518,18 @@ def main() -> int:
         help="run the action for every fmtlib/fmt task",
     )
     parser.add_argument("--image")
+    parser.add_argument("--harness")
+    parser.add_argument("--retrieval-model")
+    parser.add_argument("--repair-model")
+    parser.add_argument("--agent-timeout", type=int)
     parser.add_argument(
         "--build",
         action="store_true",
         help="build the task Docker image before preparing the input",
     )
     args = parser.parse_args()
+    if args.agent_timeout is not None and args.agent_timeout < 1:
+        raise SystemExit("--agent-timeout must be >= 1")
     if args.all and args.instance_id:
         raise SystemExit("--all and --instance-id cannot be used together")
 
@@ -517,10 +544,19 @@ def main() -> int:
         instances = [instance]
 
     failures = []
+    doctor_options = framework_agent_options(args)
+    repair_options = framework_agent_options(args, include_timeout=True)
     for instance in instances:
         print(f"\n=== {instance} (cpp/fmtlib) ===", flush=True)
         try:
-            status = run_instance(args.action, instance, args.image, args.build)
+            status = run_instance(
+                args.action,
+                instance,
+                args.image,
+                args.build,
+                doctor_options,
+                repair_options,
+            )
         except (OSError, RuntimeError, ValueError) as exc:
             print(f"[error] {instance}: {exc}", flush=True)
             status = 1

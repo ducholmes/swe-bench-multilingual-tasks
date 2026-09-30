@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 import subprocess
+from types import SimpleNamespace
 import unittest
 
-from run_debugging_cases import complete_oracle_results
+from run_debugging_cases import complete_oracle_results, framework_agent_options
 from runners import CppRunner
 
 
@@ -59,6 +60,20 @@ class CppRunnerTest(unittest.TestCase):
             complete_oracle_results(
                 result, ["suite.one", "suite.two", "suite.three"]
             )
+
+    def test_framework_agent_options_add_timeout_only_for_repair(self) -> None:
+        args = SimpleNamespace(
+            harness="openhands",
+            retrieval_model="retrieval-model",
+            repair_model="repair-model",
+            agent_timeout=120,
+        )
+
+        doctor = framework_agent_options(args)
+        repair = framework_agent_options(args, include_timeout=True)
+
+        self.assertNotIn("--agent-timeout", doctor)
+        self.assertEqual(repair[-2:], ("--agent-timeout", "120"))
 
 
 if __name__ == "__main__":

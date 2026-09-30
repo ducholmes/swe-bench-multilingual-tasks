@@ -27,7 +27,7 @@ run is restricted with `GTEST_FILTER` to one ID from `tests.json`, so tests
 outside the declared oracle cannot affect repair validation. Each selected test
 has a 30-second timeout and one retry, and command output is streamed while
 prepare runs. The script then runs the failing test to create `failure.log`,
-cleans generated build files, and writes a schema-version-6 config whose
+cleans generated build files, and writes the canonical project config whose
 regression command runs exactly the declared `FAIL_TO_PASS` and `PASS_TO_PASS`
 IDs, excluding any fixed-state-invalid regression IDs found by the oracle
 check. On macOS, patches are applied from
@@ -46,6 +46,11 @@ Run Debugging-Framework for every instance sequentially:
 ```bash
 python debugging/run_debugging_cases.py repair --all
 ```
+
+The fmtlib and Redis runners accept the same per-run agent overrides:
+`--harness`, `--retrieval-model`, `--repair-model`, and `--agent-timeout`.
+Authentication and provider routing stay in Debugging-Framework's `.env`; the
+generated benchmark contract is reusable across harnesses.
 
 Use `--instance-id fmtlib__fmt-2457` instead of `--all` to work on one case.
 Pass `--build` to build each task's Docker image from its task-local

@@ -260,7 +260,6 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
             flush=True,
         )
     config = {
-        "schema_version": 6,
         "project_id": task_id,
         "language": runner.language,
         "system": "make",
@@ -291,7 +290,30 @@ def prepare(task_id: str, image: str | None = None, build: bool = False) -> Path
 
 
 def discover_instances() -> list[str]:
-    return sorted(p.name for p in TASKS.iterdir() if p.is_dir() and p.name.startswith("redis__redis-") and (p / "task.yaml").is_file())
+    return sorted(
+        path.name
+        for path in TASKS.iterdir()
+        if path.is_dir()
+        and path.name.startswith("redis__redis-")
+        and (path / "task.yaml").is_file()
+    )
+
+
+def framework_agent_options(
+    args: argparse.Namespace, *, include_timeout: bool = False
+) -> list[str]:
+    values = [
+        ("--harness", args.harness),
+        ("--retrieval-model", args.retrieval_model),
+        ("--repair-model", args.repair_model),
+    ]
+    if include_timeout:
+        values.append(("--agent-timeout", args.agent_timeout))
+    options: list[str] = []
+    for flag, value in values:
+        if value is not None:
+            options.extend((flag, str(value)))
+    return options
 
 
 def main() -> int:
@@ -300,14 +322,22 @@ def main() -> int:
     parser.add_argument("--instance-id")
     parser.add_argument("--all", action="store_true")
     parser.add_argument("--image")
+    parser.add_argument("--harness")
+    parser.add_argument("--retrieval-model")
+    parser.add_argument("--repair-model")
+    parser.add_argument("--agent-timeout", type=int)
     parser.add_argument(
         "--build",
         action="store_true",
         help="build the task Docker image before preparing the input",
     )
     args = parser.parse_args()
+    if args.agent_timeout is not None and args.agent_timeout < 1:
+        raise SystemExit("--agent-timeout must be >= 1")
     if args.all == bool(args.instance_id):
         raise SystemExit("provide exactly one of --all or --instance-id")
+    doctor_options = framework_agent_options(args)
+    repair_options = framework_agent_options(args, include_timeout=True)
     failures = []
     for task_id in discover_instances() if args.all else [args.instance_id]:
         try:
@@ -316,14 +346,36 @@ def main() -> int:
                 path = prepare(task_id, args.image, args.build)
             else:
                 path = task_path
-                if not (path / "config.json").is_file() or not (path / "failure.log").is_file():
+                if (
+                    not (path / "config.json").is_file()
+                    or not (path / "failure.log").is_file()
+                ):
                     raise RuntimeError(
                         f"input not found at {path}; run prepare first"
                     )
             project, config = path / task_id, path / "config.json"
-            if args.action in ("doctor", "trial") and run([str(FRAMEWORK), "doctor", str(project), "--config", str(config)]).returncode:
+            doctor = [
+                str(FRAMEWORK),
+                "doctor",
+                str(project),
+                "--config",
+                str(config),
+                *doctor_options,
+            ]
+            if args.action in ("doctor", "trial") and run(doctor).returncode:
                 raise RuntimeError("doctor failed")
-            if args.action in ("repair", "trial") and run([str(FRAMEWORK), "repair", "--project", str(project), "--config", str(config), "--failure-output", str(path / "failure.log")]).returncode:
+            repair = [
+                str(FRAMEWORK),
+                "repair",
+                "--project",
+                str(project),
+                "--config",
+                str(config),
+                "--failure-output",
+                str(path / "failure.log"),
+                *repair_options,
+            ]
+            if args.action in ("repair", "trial") and run(repair).returncode:
                 raise RuntimeError("repair failed")
         except (OSError, RuntimeError, ValueError) as exc:
             print(f"[error] {task_id}: {exc}")
